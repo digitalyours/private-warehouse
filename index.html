@@ -356,24 +356,19 @@
 <div id="view-photo" class="view">
   <div class="hdr">
     <button class="hdr-btn" onclick="App.backFromPhoto()">←</button>
-    <h1>Foto aufnehmen</h1>
+    <h1>📷 Foto</h1>
+    <span id="photo-hdr-box" style="font-size:13px;font-weight:700;color:var(--primary);background:var(--primary-light);padding:4px 10px;border-radius:20px;white-space:nowrap"></span>
   </div>
   <div class="content">
-    <!-- Schritt 1: Box auswählen (wenn noch keine gewählt) -->
-    <div id="photo-select-box" style="display:none">
-      <div class="card">
-        <div class="card-title">Box wählen</div>
-        <div class="form-group">
-          <select id="photo-box-select" onchange="App.setPhotoBox(this.value)">
-            <option value="">— Box auswählen —</option>
-          </select>
-        </div>
+    <!-- Box-Auswahl: immer sichtbar, vorbelegt mit letzter Box -->
+    <div class="card" style="margin-bottom:12px">
+      <div class="form-group" style="margin-bottom:0">
+        <label style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">Box auswählen</label>
+        <select id="photo-box-select" onchange="App.setPhotoBox(this.value)"
+          style="width:100%;padding:11px 14px;border:2px solid var(--primary);border-radius:10px;font-size:15px;font-family:inherit;font-weight:600;color:var(--text);background:var(--primary-light);outline:none">
+          <option value="">— Box wählen —</option>
+        </select>
       </div>
-    </div>
-
-    <!-- Schritt 2: Foto -->
-    <div id="photo-selected-info" style="display:none" class="card" style="margin-bottom:12px">
-      <p style="font-size:14px">Foto für: <strong id="photo-box-label"></strong></p>
     </div>
 
     <!-- Upload-Bereich -->
@@ -430,7 +425,10 @@
 <div id="view-manual" class="view">
   <div class="hdr">
     <button class="hdr-btn" onclick="App.showView('box')">←</button>
-    <h1>Artikel hinzufügen</h1>
+    <div style="flex:1;overflow:hidden">
+      <div id="manual-hdr-title" style="font-size:17px;font-weight:700">Artikel hinzufügen</div>
+      <div id="manual-hdr-box" style="font-size:12px;color:var(--primary);font-weight:600;margin-top:1px"></div>
+    </div>
   </div>
   <div class="content">
     <div class="card">
@@ -512,9 +510,13 @@
       <div class="setting-section-title">QR-Codes drucken</div>
       <div class="card">
         <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
-          Generiere und drucke QR-Codes für alle 10 Boxen.
+          QR-Codes werden automatisch vom GitHub Action generiert und unter <code style="font-size:12px;background:var(--bg);padding:2px 5px;border-radius:4px">qr-codes/</code> gespeichert.<br><br>
+          Druckseite direkt öffnen:
         </p>
-        <button class="btn btn-secondary" onclick="App.showView('qrcodes')">▣ QR-Codes anzeigen</button>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="App.showView('qrcodes')">▣ In App anzeigen</button>
+          <a href="qr-codes/index.html" target="_blank" class="btn btn-secondary" style="text-decoration:none">🖨️ Druckseite</a>
+        </div>
       </div>
     </div>
 
@@ -778,24 +780,32 @@ const App = {
       sel.appendChild(opt);
     });
 
-    // Settings: show saved PAT
+    // Fix 4 — Restore saved PAT immediately, show status
     if (this.pat) {
       $('pat-input').value = this.pat;
-      this.updateConnStatus('ok', 'Verbunden');
+      this.updateConnStatus('ok', 'PAT gespeichert ✓');
     }
 
-    // URL param: ?box=BOX-001
+    // Fix 2 — URL param: open box IMMEDIATELY without waiting for all boxes
     const params = new URLSearchParams(location.search);
     const boxParam = params.get('box');
 
-    // Load boxes then navigate
     this.renderBoxGrid();
-    this.loadAllBoxes().then(() => {
-      this.renderBoxGrid();
-      if (boxParam && CONFIG.boxes.includes(boxParam)) {
-        this.openBox(boxParam);
-      }
-    });
+
+    if (boxParam && CONFIG.boxes.includes(boxParam)) {
+      // Navigate to box right away — data loads in background
+      this.openBox(boxParam);
+      // Load target box first, then rest in background
+      this.loadBox(boxParam).then(() => {
+        this.renderBoxDetail();
+        this.renderBoxGrid();
+        CONFIG.boxes.filter(id => id !== boxParam)
+          .forEach(id => this.loadBox(id).catch(() => {}));
+      });
+    } else {
+      // Normal startup: load all boxes
+      this.loadAllBoxes().then(() => this.renderBoxGrid());
+    }
   },
 
   // ── views ──
@@ -806,8 +816,25 @@ const App = {
     if (name === 'home')     { $('nav-home')?.classList.add('active'); }
     if (name === 'photo')    { $('nav-photo')?.classList.add('active'); }
     if (name === 'settings' || name === 'qrcodes') { $('nav-settings')?.classList.add('active'); }
-    if (name === 'manual')   { setTimeout(() => $('manual-input')?.focus(), 150); }
     if (name === 'qrcodes')  { this.renderQRCodes(); }
+
+    // Fix 3 — Update dynamic titles so context is always clear
+    if (name === 'manual') {
+      const boxLabel = this.currentBoxId
+        ? `${this.currentBoxId}${this.boxes[this.currentBoxId]?.label ? ' – ' + this.boxes[this.currentBoxId].label : ''}`
+        : '?';
+      $('manual-hdr-title').textContent = `Artikel hinzufügen`;
+      $('manual-hdr-box').textContent   = boxLabel;
+      // Reset added-list for new session
+      this.manualAddedItems = [];
+      $('manual-added').style.display = 'none';
+      setTimeout(() => $('manual-input')?.focus(), 150);
+    }
+    // Fix 3 — Clear box context when going home so nav-photo shows selector
+    if (name === 'home') {
+      this.currentBoxId = null;
+    }
+
     this.currentView = name;
     window.scrollTo(0, 0);
   },
@@ -967,48 +994,56 @@ const App = {
   closeModal(id) { $(id).classList.add('hidden'); },
 
   // ── photo flow ──
+  _syncPhotoDropdown() {
+    // Sync dropdown value and header pill to currentBoxId
+    const sel = $('photo-box-select');
+    sel.value = this.currentBoxId || '';
+    if (this.currentBoxId) {
+      const lbl = this.boxes[this.currentBoxId]?.label;
+      $('photo-hdr-box').textContent = lbl
+        ? `${this.currentBoxId} – ${lbl}`
+        : this.currentBoxId;
+    } else {
+      $('photo-hdr-box').textContent = '';
+    }
+  },
   goToPhoto() {
+    // Called from box-detail button: box is already set, dropdown pre-populated
     this.resetPhoto();
-    $('photo-select-box').style.display = 'none';
-    $('photo-selected-info').style.display = 'block';
-    $('photo-box-label').textContent = this.currentBoxId;
+    this._syncPhotoDropdown();
     this.showView('photo');
   },
   goToPhotoFromNav() {
+    // Called from bottom nav: always show dropdown so user can change box
+    // Pre-populate with last used box (if any) but leave it changeable
     this.resetPhoto();
-    if (this.currentBoxId) {
-      $('photo-select-box').style.display = 'none';
-      $('photo-selected-info').style.display = 'block';
-      $('photo-box-label').textContent = this.currentBoxId;
-    } else {
-      $('photo-select-box').style.display = 'block';
-      $('photo-selected-info').style.display = 'none';
-    }
+    this._syncPhotoDropdown();
     this.showView('photo');
   },
   setPhotoBox(boxId) {
-    if (!boxId) return;
-    this.currentBoxId = boxId;
-    $('photo-select-box').style.display = 'none';
-    $('photo-selected-info').style.display = 'block';
-    $('photo-box-label').textContent = boxId;
+    // Called when user changes the dropdown
+    this.currentBoxId = boxId || null;
+    const lbl = boxId ? this.boxes[boxId]?.label : '';
+    $('photo-hdr-box').textContent = boxId
+      ? (lbl ? `${boxId} – ${lbl}` : boxId)
+      : '';
   },
   backFromPhoto() {
     if (this.currentBoxId) this.showView('box');
     else this.showView('home');
   },
   resetPhoto() {
-    $('drop-zone').style.display = 'block';
-    $('preview-wrap').style.display = 'none';
-    $('photo-loading').style.display = 'none';
-    $('ai-results').style.display = 'none';
-    $('photo-error').style.display = 'none';
-    $('preview-img').src = '';
-    $('file-input').value = '';
-    $('ai-items-list').innerHTML = '';
-    $('ai-add-input').value = '';
+    $('drop-zone').style.display        = 'block';
+    $('preview-wrap').style.display     = 'none';
+    $('photo-loading').style.display    = 'none';
+    $('ai-results').style.display       = 'none';
+    $('photo-error').style.display      = 'none';
+    $('preview-img').src                = '';
+    $('file-input').value               = '';
+    $('ai-items-list').innerHTML        = '';
+    $('ai-add-input').value             = '';
     this._photoBlob = null;
-    this._aiItems = [];
+    this._aiItems   = [];
   },
 
   onDragOver(e) { e.preventDefault(); $('drop-zone').classList.add('dragover'); },
@@ -1229,21 +1264,35 @@ const App = {
   },
 
   renderQRCodes() {
-    if (this._qrGenerated) return;
+    // Always generate QR codes with JS directly — reliable, no network dependency.
+    // The GitHub Action generates separate PNG files only for the print page (qr-codes/index.html).
     const grid = $('qr-grid');
     grid.innerHTML = '';
+
     CONFIG.boxes.forEach(id => {
-      const url = `${CONFIG.pageUrl}/?box=${id}`;
+      const url   = `${CONFIG.pageUrl}/?box=${id}`;
+      const label = this.boxes[id]?.label || '';
+
       const card = document.createElement('div');
       card.className = 'qr-card';
+
       const canvasWrap = document.createElement('div');
       canvasWrap.className = 'qr-box';
+
+      const meta = document.createElement('div');
+      meta.innerHTML = `<div class="qr-id">${id}</div><div class="qr-lbl">${label}</div>`;
+
       card.appendChild(canvasWrap);
-      card.innerHTML += `<div class="qr-id">${id}</div><div class="qr-lbl">${this.boxes[id]?.label || ''}</div>`;
-      grid.appendChild(card);
-      new QRCode(canvasWrap, { text: url, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.H });
+      card.appendChild(meta);
+      grid.appendChild(card); // must be in DOM before QRCode writes canvas
+
+      new QRCode(canvasWrap, {
+        text: url,
+        width: 120,
+        height: 120,
+        correctLevel: QRCode.CorrectLevel.H
+      });
     });
-    this._qrGenerated = true;
   },
 
   // ── settings ──
@@ -1251,24 +1300,24 @@ const App = {
     const pat = $('pat-input').value.trim();
     if (!pat) { toast('⚠️ Bitte PAT eingeben', 'error'); return; }
 
-    this.updateConnStatus('wait', 'Verbindung wird geprüft …');
+    // Fix 4 — Save immediately to localStorage, don't wait for verification
+    this.pat = pat;
+    localStorage.setItem('wh_pat', pat);
+    this.updateConnStatus('wait', 'Gespeichert — Verbindung wird geprüft …');
+    toast('💾 PAT gespeichert', '', 1500);
 
     try {
-      // Test: get repo info
       const r = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}`, {
         headers: { 'Authorization': `token ${pat}`, 'Accept': 'application/vnd.github.v3+json' }
       });
       if (!r.ok) throw new Error(`HTTP ${r.status} – PAT ungültig oder Repo nicht gefunden`);
-      this.pat = pat;
-      localStorage.setItem('wh_pat', pat);
       this.updateConnStatus('ok', 'Verbunden ✓');
       toast('✓ Verbunden!', 'success');
-      // Reload boxes with new PAT
       await this.loadAllBoxes();
       this.renderBoxGrid();
     } catch(e) {
-      this.updateConnStatus('err', 'Fehler: ' + e.message);
-      toast('❌ ' + e.message, 'error', 5000);
+      this.updateConnStatus('err', 'PAT gespeichert, aber Verbindungstest fehlgeschlagen');
+      toast('⚠️ PAT gespeichert. Prüfe ob das Repo existiert und der PAT korrekt ist.', 'error', 6000);
     }
   },
 

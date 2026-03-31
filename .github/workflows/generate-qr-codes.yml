@@ -1,0 +1,147 @@
+name: 📦 QR-Codes generieren & speichern
+
+on:
+  # Einmalig manuell ausführen nach erstem Push ins Repo
+  workflow_dispatch:
+  # Automatisch wenn sich Box-Dateien ändern (Label-Updates)
+  push:
+    branches: [main]
+    paths:
+      - 'boxes/*.md'
+      - '.github/workflows/generate-qr-codes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-qr-codes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🟢 Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 QR-Code Bibliothek installieren
+        run: npm install qrcode
+
+      - name: 🔲 QR-Codes als PNG generieren
+        run: |
+          node - <<'JSEOF'
+          const QRCode = require('qrcode');
+          const fs     = require('fs');
+          const path   = require('path');
+
+          const OWNER    = 'digitalyours';
+          const REPO     = 'private-warehouse';
+          const PAGE_URL = `https://${OWNER}.github.io/${REPO}`;
+          const NUM_BOXES = 10;
+
+          const outDir = 'qr-codes';
+          if (!fs.existsSync(outDir)) fs.mkdirSync(outDir);
+
+          const boxes = Array.from({length: NUM_BOXES}, (_, i) =>
+            `BOX-${String(i+1).padStart(3,'0')}`
+          );
+
+          // Lade Box-Labels aus .md Dateien (für den Ausdruck)
+          function readLabel(boxId) {
+            try {
+              const md = fs.readFileSync(`boxes/${boxId}.md`, 'utf8');
+              const m  = md.match(/\*\*Label:\*\*\s*(.+)/);
+              return m ? m[1].trim() : '';
+            } catch { return ''; }
+          }
+
+          async function main() {
+            console.log(`Generiere ${NUM_BOXES} QR-Codes …`);
+
+            // 1. PNG-Dateien für jede Box
+            await Promise.all(boxes.map(async (boxId) => {
+              const url  = `${PAGE_URL}/?box=${boxId}`;
+              const file = path.join(outDir, `${boxId}.png`);
+              await QRCode.toFile(file, url, {
+                width: 400,
+                margin: 2,
+                color: { dark: '#1e293b', light: '#ffffff' },
+                errorCorrectionLevel: 'H'
+              });
+              console.log(`  ✓ ${boxId}.png`);
+            }));
+
+            // 2. Druckbare HTML-Seite mit allen QR-Codes
+            const cards = boxes.map(boxId => {
+              const label = readLabel(boxId);
+              return `
+                <div class="card">
+                  <img src="${boxId}.png" alt="${boxId}">
+                  <div class="box-id">${boxId}</div>
+                  ${label ? `<div class="box-lbl">${label}</div>` : ''}
+                </div>`;
+            }).join('\n');
+
+            const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR-Codes — Lagerverwaltung</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 20px; margin-bottom: 6px; }
+    p  { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; text-align: center; break-inside: avoid; }
+    .card img { width: 120px; height: 120px; display: block; margin: 0 auto 10px; }
+    .box-id  { font-size: 14px; font-weight: 700; color: #1e293b; }
+    .box-lbl { font-size: 12px; color: #64748b; margin-top: 3px; }
+    @media print {
+      body { padding: 10px; background: white; }
+      p, h1 { display: none; }
+      .grid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .card { border: 1px solid #ccc; padding: 10px; }
+      .card img { width: 110px; height: 110px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>📦 Lagerverwaltung — QR-Codes</h1>
+  <p>Seite drucken (Strg+P / Cmd+P) und QR-Codes auf die Euroboxen kleben.</p>
+  <div class="grid">
+    ${cards}
+  </div>
+</body>
+</html>`;
+
+            fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf8');
+            console.log('  ✓ index.html (Druckseite)');
+            console.log('Fertig!');
+          }
+
+          main().catch(e => { console.error(e); process.exit(1); });
+          JSEOF
+
+      - name: 💾 QR-Codes committen & pushen
+        run: |
+          git config user.name  "Warehouse Bot 🤖"
+          git config user.email "warehouse-bot@users.noreply.github.com"
+          git add qr-codes/
+          # Nur committen wenn sich etwas geändert hat
+          if git diff --staged --quiet; then
+            echo "Keine Änderungen — QR-Codes sind aktuell."
+            exit 0
+          fi
+          git commit -m "📦 QR-Codes aktualisiert ($(date '+%Y-%m-%d'))"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin main && break
+            echo "Push fehlgeschlagen (Versuch $i/3) …"
+            sleep 3
+          done

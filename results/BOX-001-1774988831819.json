@@ -1,0 +1,7 @@
+{
+  "box_id": "BOX-001",
+  "request_id": "BOX-001-1774988831819",
+  "items": [],
+  "status": "error",
+  "error": "OpenAI Fehler 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/gu"
+}

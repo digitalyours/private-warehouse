@@ -1,0 +1,172 @@
+name: 🤖 Bildanalyse (GPT-4o)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_path:
+        description: 'Pfad zur Bilddatei im Repo (z.B. incoming/BOX-001-1234.jpg)'
+        required: true
+      box_id:
+        description: 'Box-ID (z.B. BOX-001)'
+        required: true
+      request_id:
+        description: 'Eindeutige Anfrage-ID'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔍 Bild mit GPT-4o analysieren
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          IMAGE_PATH: ${{ inputs.image_path }}
+          BOX_ID: ${{ inputs.box_id }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          python3 - <<'PYEOF'
+          import base64, json, os, sys, re
+          import urllib.request, urllib.error
+
+          image_path = os.environ["IMAGE_PATH"]
+          box_id     = os.environ["BOX_ID"]
+          request_id = os.environ["REQUEST_ID"]
+          api_key    = os.environ.get("OPENAI_API_KEY", "")
+
+          if not api_key:
+              print("ERROR: OPENAI_API_KEY secret ist nicht gesetzt!")
+              result = {"box_id": box_id, "request_id": request_id, "items": [], "status": "error", "error": "OPENAI_API_KEY fehlt"}
+          elif not os.path.exists(image_path):
+              print(f"ERROR: Bilddatei '{image_path}' nicht gefunden!")
+              result = {"box_id": box_id, "request_id": request_id, "items": [], "status": "error", "error": f"Bilddatei nicht gefunden: {image_path}"}
+          else:
+              # Bild lesen und base64-kodieren
+              with open(image_path, "rb") as f:
+                  image_data = base64.b64encode(f.read()).decode("utf-8")
+
+              ext = image_path.lower().rsplit(".", 1)[-1]
+              media_type = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}.get(ext, "image/jpeg")
+
+              # OpenAI API Anfrage
+              payload = {
+                  "model": "gpt-4o",
+                  "messages": [
+                      {
+                          "role": "user",
+                          "content": [
+                              {
+                                  "type": "text",
+                                  "text": (
+                                      "Du analysierst den Inhalt einer grauen Eurobox (Lagerbox).\n"
+                                      "Identifiziere ALLE sichtbaren Gegenstände im Bild.\n"
+                                      "Antworte NUR mit einem JSON-Array von Gegenständen auf Deutsch.\n"
+                                      "Beispiel: [\"Winterjacke blau\", \"Skihandschuhe\", \"Wollmütze rot\"]\n"
+                                      "Keine Erklärungen, kein Markdown, nur das JSON-Array."
+                                  )
+                              },
+                              {
+                                  "type": "image_url",
+                                  "image_url": {
+                                      "url": f"data:{media_type};base64,{image_data}",
+                                      "detail": "high"
+                                  }
+                              }
+                          ]
+                      }
+                  ],
+                  "max_tokens": 800,
+                  "temperature": 0.2
+              }
+
+              req = urllib.request.Request(
+                  "https://api.openai.com/v1/chat/completions",
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={
+                      "Authorization": f"Bearer {api_key}",
+                      "Content-Type": "application/json"
+                  }
+              )
+
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      data = json.loads(resp.read().decode("utf-8"))
+
+                  content = data["choices"][0]["message"]["content"].strip()
+                  print(f"GPT-4o Antwort: {content[:200]}")
+
+                  # JSON aus Antwort extrahieren
+                  try:
+                      items = json.loads(content)
+                  except json.JSONDecodeError:
+                      match = re.search(r'\[.*?\]', content, re.DOTALL)
+                      if match:
+                          items = json.loads(match.group())
+                      else:
+                          # Fallback: Zeilen als Items
+                          items = [line.strip("- •*").strip() for line in content.split("\n") if line.strip() and not line.startswith("{")]
+
+                  if not isinstance(items, list):
+                      items = [str(items)]
+
+                  # Leere und Duplikate entfernen
+                  seen = set()
+                  clean_items = []
+                  for item in items:
+                      s = str(item).strip()
+                      if s and s.lower() not in seen:
+                          clean_items.append(s)
+                          seen.add(s.lower())
+
+                  result = {
+                      "box_id": box_id,
+                      "request_id": request_id,
+                      "items": clean_items,
+                      "status": "success"
+                  }
+                  print(f"Erkannte Artikel ({len(clean_items)}): {clean_items}")
+
+              except urllib.error.HTTPError as e:
+                  body = e.read().decode("utf-8", errors="replace")
+                  print(f"OpenAI HTTP-Fehler {e.code}: {body}")
+                  result = {"box_id": box_id, "request_id": request_id, "items": [], "status": "error", "error": f"OpenAI Fehler {e.code}: {body[:200]}"}
+
+          # Ergebnis speichern
+          os.makedirs("results", exist_ok=True)
+          result_path = f"results/{request_id}.json"
+          with open(result_path, "w", encoding="utf-8") as f:
+              json.dump(result, f, ensure_ascii=False, indent=2)
+
+          print(f"Ergebnis gespeichert: {result_path}")
+          PYEOF
+
+      - name: 📤 Ergebnis committen & hochladen
+        run: |
+          git config user.name  "Warehouse Bot 🤖"
+          git config user.email "warehouse-bot@users.noreply.github.com"
+
+          # Eingehendes Bild löschen
+          if [ -f "${{ inputs.image_path }}" ]; then
+            git rm "${{ inputs.image_path }}"
+          fi
+
+          # Ergebnis hinzufügen
+          git add "results/${{ inputs.request_id }}.json"
+
+          git commit -m "🤖 Analyse: ${{ inputs.box_id }} — ${{ inputs.request_id }}"
+
+          # Push mit Retry bei Konflikten
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin main && break
+            echo "Push fehlgeschlagen, Versuch $i/3..."
+            sleep 3
+          done

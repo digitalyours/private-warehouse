@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>📦 Lagerverwaltung</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #eff6ff;
+      --primary-border: #bfdbfe;
+      --success: #16a34a;
+      --success-light: #f0fdf4;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --danger-light: #fef2f2;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+      --radius: 14px;
+      --nav-h: 72px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+    }
+
+    /* ── NAVIGATION ── */
+    .nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: var(--nav-h);
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: space-around;
+      padding-top: 10px;
+      padding-bottom: env(safe-area-inset-bottom);
+      z-index: 100;
+    }
+    .nav-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+      background: none; border: none; cursor: pointer;
+      color: var(--text-muted); font-size: 11px; font-family: inherit; font-weight: 500;
+      transition: color 0.15s; padding: 0;
+    }
+    .nav-btn .ni { font-size: 24px; line-height: 1; }
+    .nav-btn.active { color: var(--primary); }
+    .nav-btn .nav-badge {
+      position: absolute; top: -4px; right: 50%; transform: translateX(12px);
+      background: var(--danger); color: #fff;
+      font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px; min-width: 16px; text-align: center;
+    }
+    .nav-center-wrap { position: relative; }
+
+    /* ── HEADER ── */
+    .hdr {
+      position: sticky; top: 0; background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px; display: flex; align-items: center; gap: 10px;
+      z-index: 50; min-height: 56px;
+    }
+    .hdr h1 { font-size: 18px; font-weight: 700; flex: 1; }
+    .hdr-btn {
+      background: none; border: none; font-size: 20px; cursor: pointer;
+      color: var(--primary); padding: 4px 6px; border-radius: 8px; line-height: 1;
+    }
+    .hdr-btn:active { background: var(--primary-light); }
+
+    /* ── VIEWS ── */
+    .view { display: none; }
+    .view.active { display: block; }
+    .content { padding: 14px 14px 20px; }
+
+    /* ── SEARCH ── */
+    .search-wrap {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 14px; margin-bottom: 14px;
+    }
+    .search-wrap input {
+      flex: 1; border: none; outline: none;
+      font-size: 15px; font-family: inherit; color: var(--text); background: none;
+    }
+    .search-wrap input::placeholder { color: var(--text-muted); }
+
+    /* ── BOX GRID ── */
+    .box-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    @media (min-width: 480px) { .box-grid { grid-template-columns: repeat(3, 1fr); } }
+
+    .box-card {
+      background: var(--card); border-radius: var(--radius); padding: 14px 12px;
+      cursor: pointer; box-shadow: var(--shadow); border: 2px solid transparent;
+      transition: all 0.15s; position: relative; overflow: hidden;
+    }
+    .box-card:active { transform: scale(0.96); }
+    .box-card.filled { border-color: var(--primary-border); }
+    .box-card.selected-for-photo { border-color: var(--primary); background: var(--primary-light); }
+    .box-emoji { font-size: 28px; margin-bottom: 6px; display: block; }
+    .box-id { font-size: 13px; font-weight: 700; color: var(--text); }
+    .box-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .box-count-badge {
+      position: absolute; top: 8px; right: 8px;
+      background: var(--primary); color: #fff;
+      font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; min-width: 22px; text-align: center;
+    }
+    .box-count-badge.empty { background: var(--border); color: var(--text-muted); }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 16px; box-shadow: var(--shadow); margin-bottom: 12px;
+    }
+    .card-title { font-size: 14px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 13px 18px; border-radius: 12px; border: none;
+      font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer;
+      transition: all 0.15s; width: 100%;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-sm { padding: 9px 14px; font-size: 13px; width: auto; border-radius: 9px; }
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row .btn { flex: 1; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── ITEMS ── */
+    .item-list { list-style: none; }
+    .item-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .item-row:last-child { border-bottom: none; }
+    .item-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
+    .item-name { flex: 1; font-size: 15px; }
+    .item-date { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .item-del {
+      background: none; border: none; font-size: 16px; cursor: pointer;
+      color: #cbd5e1; padding: 4px; border-radius: 6px; line-height: 1;
+    }
+    .item-del:hover { color: var(--danger); background: var(--danger-light); }
+    .empty-items {
+      text-align: center; padding: 28px 0;
+      color: var(--text-muted); font-size: 14px;
+    }
+
+    /* ── INPUTS ── */
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-muted); }
+    .form-group input, .form-group select {
+      width: 100%; padding: 12px 14px;
+      border: 1px solid var(--border); border-radius: 10px;
+      font-size: 15px; font-family: inherit; outline: none;
+      transition: border-color 0.2s; background: var(--card); color: var(--text);
+    }
+    .form-group input:focus, .form-group select:focus { border-color: var(--primary); }
+    .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 5px; line-height: 1.5; }
+
+    /* ── PHOTO / CAMERA ── */
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 36px 20px; text-align: center; cursor: pointer;
+      transition: all 0.2s; margin-bottom: 14px; background: var(--card);
+    }
+    .drop-zone:active, .drop-zone.dragover { background: var(--primary-light); border-color: var(--primary); }
+    .drop-zone .dz-icon { font-size: 44px; margin-bottom: 10px; }
+    .drop-zone p { color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+    .drop-zone strong { display: block; font-size: 16px; color: var(--text); margin-bottom: 4px; }
+    .preview-wrap { position: relative; margin-bottom: 14px; }
+    .preview-img { width: 100%; border-radius: var(--radius); max-height: 280px; object-fit: cover; display: block; }
+    .preview-remove {
+      position: absolute; top: 8px; right: 8px;
+      background: rgba(0,0,0,0.5); color: #fff; border: none; border-radius: 50%;
+      width: 28px; height: 28px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── AI RESULTS ── */
+    .ai-item-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; background: var(--bg); border-radius: 10px; margin-bottom: 8px;
+    }
+    .ai-item-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); flex-shrink: 0; cursor: pointer; }
+    .ai-item-name { flex: 1; font-size: 15px; cursor: pointer; }
+    .ai-item-name.checked { text-decoration: line-through; color: var(--text-muted); }
+
+    /* ── LOADING ── */
+    .loading-block { text-align: center; padding: 48px 20px; }
+    .spinner {
+      display: inline-block; width: 36px; height: 36px;
+      border: 3px solid var(--border); border-top-color: var(--primary);
+      border-radius: 50%; animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-label { margin-top: 16px; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+    .loading-step { font-weight: 600; color: var(--text); }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px);
+      background: #1e293b; color: #fff; padding: 11px 20px; border-radius: 20px;
+      font-size: 14px; font-weight: 500; z-index: 999; transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      white-space: nowrap; max-width: 90vw; box-shadow: var(--shadow-md);
+      pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.success { background: var(--success); }
+    #toast.error { background: var(--danger); }
+    #toast.info { background: var(--primary); }
+
+    /* ── QR CODES ── */
+    .qr-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    @media (min-width: 480px) { .qr-grid { grid-template-columns: repeat(3, 1fr); } }
+    .qr-card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 16px 12px; text-align: center; box-shadow: var(--shadow);
+    }
+    .qr-card .qr-id { font-size: 13px; font-weight: 700; margin-top: 8px; }
+    .qr-card .qr-lbl { font-size: 11px; color: var(--text-muted); }
+    .qr-box { display: flex; justify-content: center; }
+
+    /* ── SETTINGS SECTION ── */
+    .setting-section { margin-bottom: 22px; }
+    .setting-section-title {
+      font-size: 11px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px; padding: 0 2px;
+    }
+    .status-line { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+    .dot.ok { background: var(--success); }
+    .dot.err { background: var(--danger); }
+    .dot.wait { background: var(--warning); }
+
+    /* ── BOX DETAIL META ── */
+    .box-meta-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; background: var(--primary-light);
+      border-bottom: 1px solid var(--primary-border); font-size: 13px;
+    }
+    .box-meta-bar .meta-id { font-weight: 700; color: var(--primary); }
+    .box-meta-bar .meta-lbl { color: var(--text-muted); flex: 1; }
+
+    /* ── MODAL ── */
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(15,23,42,0.55); z-index: 200;
+      display: flex; align-items: flex-end; backdrop-filter: blur(2px);
+    }
+    .modal-bg.hidden { display: none; }
+    .modal-sheet {
+      background: var(--card); border-radius: 20px 20px 0 0;
+      padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+      width: 100%; max-height: 85vh; overflow-y: auto;
+    }
+    .modal-sheet h2 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+    .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 18px; }
+
+    /* ── SECTION HEADER ── */
+    .sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .sec-hdr h2 { font-size: 16px; font-weight: 700; }
+    .count-pill { background: var(--bg); color: var(--text-muted); font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+
+    /* ── PRINT ── */
+    @media print {
+      .nav, .hdr { display: none !important; }
+      #view-qrcodes { display: block !important; }
+      .view:not(#view-qrcodes) { display: none !important; }
+      body { padding: 0; background: #fff; }
+      .qr-grid { grid-template-columns: repeat(4, 1fr); }
+      .qr-card { break-inside: avoid; }
+    }
+
+    /* ── RESPONSIVE MAX WIDTH ── */
+    @media (min-width: 600px) {
+      body { max-width: 540px; margin: 0 auto; }
+      .nav { max-width: 540px; left: 50%; transform: translateX(-50%); }
+    }
+
+    /* ── ANIMATIONS ── */
+    .fade-in { animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     VIEW: HOME (Box-Liste)
+═══════════════════════════════════════════════════ -->
+<div id="view-home" class="view active">
+  <div class="hdr">
+    <h1>📦 Lagerverwaltung</h1>
+    <button class="hdr-btn" onclick="App.showView('settings')" title="Einstellungen">⚙️</button>
+  </div>
+  <div class="content">
+    <div class="search-wrap">
+      <span style="font-size:16px">🔍</span>
+      <input type="text" id="search-input" placeholder="Box oder Artikel suchen …" oninput="App.filterBoxes(this.value)">
+    </div>
+    <div id="box-grid" class="box-grid">
+      <!-- dynamisch befüllt -->
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     VIEW: BOX-DETAIL
+═══════════════════════════════════════════════════ -->
+<div id="view-box" class="view">
+  <div class="hdr">
+    <button class="hdr-btn" onclick="App.showView('home')">←</button>
+    <h1 id="box-detail-title">BOX-001</h1>
+    <button class="hdr-btn" onclick="App.showBoxQR()" title="QR-Code">▣</button>
+  </div>
+  <div id="box-meta-bar" class="box-meta-bar">
+    <span class="meta-id" id="box-meta-id"></span>
+    <span class="meta-lbl" id="box-meta-lbl">Kein Label</span>
+    <button class="btn btn-sm btn-secondary" onclick="App.showLabelEdit()" style="padding:5px 10px;font-size:12px">✏️</button>
+  </div>
+  <div class="content fade-in">
+    <div class="btn-row" style="margin-bottom:14px">
+      <button class="btn btn-primary" onclick="App.goToPhoto()">📷 Foto aufnehmen</button>
+      <button class="btn btn-secondary" onclick="App.showView('manual')">✏️ Manuell</button>
+    </div>
+    <div class="card">
+      <div class="sec-hdr">
+        <h2>Inhalt</h2>
+        <span id="box-count-pill" class="count-pill">0 Artikel</span>
+      </div>
+      <ul id="item-list" class="item-list"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     VIEW: FOTO
+═══════════════════════════════════════════════════ -->
+<div id="view-photo" class="view">
+  <div class="hdr">
+    <button class="hdr-btn" onclick="App.backFromPhoto()">←</button>
+    <h1>Foto aufnehmen</h1>
+  </div>
+  <div class="content">
+    <!-- Schritt 1: Box auswählen (wenn noch keine gewählt) -->
+    <div id="photo-select-box" style="display:none">
+      <div class="card">
+        <div class="card-title">Box wählen</div>
+        <div class="form-group">
+          <select id="photo-box-select" onchange="App.setPhotoBox(this.value)">
+            <option value="">— Box auswählen —</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Schritt 2: Foto -->
+    <div id="photo-selected-info" style="display:none" class="card" style="margin-bottom:12px">
+      <p style="font-size:14px">Foto für: <strong id="photo-box-label"></strong></p>
+    </div>
+
+    <!-- Upload-Bereich -->
+    <div id="drop-zone" class="drop-zone" onclick="document.getElementById('file-input').click()" ondragover="App.onDragOver(event)" ondrop="App.onDrop(event)" ondragleave="App.onDragLeave(event)">
+      <div class="dz-icon">📷</div>
+      <strong>Foto aufnehmen oder hochladen</strong>
+      <p>Tippe hier, um die Kamera zu öffnen oder ein Bild aus der Galerie auszuwählen</p>
+    </div>
+    <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none" onchange="App.onFileSelected(event)">
+
+    <!-- Vorschau -->
+    <div id="preview-wrap" class="preview-wrap" style="display:none">
+      <img id="preview-img" class="preview-img" alt="Vorschau">
+      <button class="preview-remove" onclick="App.resetPhoto()">✕</button>
+    </div>
+
+    <!-- Analyse läuft -->
+    <div id="photo-loading" style="display:none">
+      <div class="loading-block">
+        <div class="spinner"></div>
+        <div class="loading-label">
+          <span class="loading-step" id="loading-step">Bild wird hochgeladen …</span><br>
+          Dies kann 30–60 Sekunden dauern.
+        </div>
+      </div>
+    </div>
+
+    <!-- KI-Ergebnisse -->
+    <div id="ai-results" style="display:none" class="card fade-in">
+      <div class="card-title">🤖 Erkannte Artikel</div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Wähle alle Artikel aus die du hinzufügen möchtest:</p>
+      <div id="ai-items-list"></div>
+      <div id="manual-add-row" style="margin:10px 0 14px;display:flex;gap:8px;align-items:center">
+        <input type="text" id="ai-add-input" placeholder="Weiteren Artikel eingeben …" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:9px;font-size:14px;font-family:inherit;outline:none" onkeydown="if(event.key==='Enter')App.addToAiList()">
+        <button class="btn btn-secondary btn-sm" onclick="App.addToAiList()">+ Hinzufügen</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="App.confirmAiItems()">✓ Speichern</button>
+        <button class="btn btn-secondary" onclick="App.resetPhoto()">↺ Neu</button>
+      </div>
+    </div>
+
+    <!-- Analyse-Fehler -->
+    <div id="photo-error" style="display:none" class="card">
+      <p style="color:var(--danger);font-size:14px;margin-bottom:12px" id="photo-error-msg">Fehler beim Analysieren.</p>
+      <button class="btn btn-secondary" onclick="App.resetPhoto()">↺ Nochmal versuchen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     VIEW: MANUELL
+═══════════════════════════════════════════════════ -->
+<div id="view-manual" class="view">
+  <div class="hdr">
+    <button class="hdr-btn" onclick="App.showView('box')">←</button>
+    <h1>Artikel hinzufügen</h1>
+  </div>
+  <div class="content">
+    <div class="card">
+      <div class="card-title">Neuer Artikel</div>
+      <div class="form-group">
+        <input type="text" id="manual-input" placeholder="z.B. Winterjacke blau, Größe L" autofocus
+          onkeydown="if(event.key==='Enter')App.addManualItem()">
+      </div>
+      <button class="btn btn-primary" onclick="App.addManualItem()">＋ Hinzufügen</button>
+    </div>
+    <div id="manual-added" style="display:none" class="card">
+      <div class="card-title">Zuletzt hinzugefügt</div>
+      <ul id="manual-added-list" class="item-list"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     VIEW: QR-CODES
+═══════════════════════════════════════════════════ -->
+<div id="view-qrcodes" class="view">
+  <div class="hdr">
+    <button class="hdr-btn" onclick="App.showView('settings')">←</button>
+    <h1>QR-Codes</h1>
+    <button class="hdr-btn" onclick="window.print()" title="Drucken">🖨️</button>
+  </div>
+  <div class="content">
+    <div class="card" style="margin-bottom:14px">
+      <p style="font-size:14px;line-height:1.6;color:var(--text-muted)">
+        Tippe auf 🖨️ um alle QR-Codes zu drucken.<br>
+        Klebe jeden Code auf die entsprechende Eurobox.
+      </p>
+    </div>
+    <div id="qr-grid" class="qr-grid"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     VIEW: EINSTELLUNGEN
+═══════════════════════════════════════════════════ -->
+<div id="view-settings" class="view">
+  <div class="hdr">
+    <button class="hdr-btn" onclick="App.showView('home')">←</button>
+    <h1>Einstellungen</h1>
+  </div>
+  <div class="content">
+
+    <div class="setting-section">
+      <div class="setting-section-title">GitHub Verbindung</div>
+      <div class="card">
+        <div class="form-group">
+          <label>Personal Access Token (PAT)</label>
+          <input type="password" id="pat-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+          <p class="form-hint">
+            Erstelle einen PAT unter GitHub → Settings → Developer settings →<br>
+            Personal access tokens (classic) mit Berechtigung <strong>public_repo</strong>.
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="App.savePat()">Speichern &amp; Verbinden</button>
+        <div class="status-line" id="conn-status">
+          <div class="dot wait" id="conn-dot"></div>
+          <span id="conn-text">Nicht verbunden</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-section">
+      <div class="setting-section-title">Repository</div>
+      <div class="card">
+        <p style="font-size:14px;line-height:1.8;color:var(--text-muted)">
+          Repo: <strong style="color:var(--text)">digitalyours/private-warehouse</strong><br>
+          Branch: <strong style="color:var(--text)">main</strong><br>
+          URL: <a href="https://digitalyours.github.io/private-warehouse/" target="_blank" style="color:var(--primary)">GitHub Pages ↗</a>
+        </p>
+      </div>
+    </div>
+
+    <div class="setting-section">
+      <div class="setting-section-title">QR-Codes drucken</div>
+      <div class="card">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+          Generiere und drucke QR-Codes für alle 10 Boxen.
+        </p>
+        <button class="btn btn-secondary" onclick="App.showView('qrcodes')">▣ QR-Codes anzeigen</button>
+      </div>
+    </div>
+
+    <div class="setting-section">
+      <div class="setting-section-title">OpenAI API-Key einrichten</div>
+      <div class="card">
+        <p style="font-size:13px;color:var(--text-muted);line-height:1.7">
+          Der API-Key für GPT-4o wird sicher als GitHub Secret gespeichert.<br><br>
+          1. Öffne dein Repo auf GitHub<br>
+          2. Settings → Secrets and variables → Actions<br>
+          3. New repository secret: <strong>OPENAI_API_KEY</strong>
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     NAVIGATION BAR
+═══════════════════════════════════════════════════ -->
+<nav class="nav">
+  <button class="nav-btn active" id="nav-home" onclick="App.showView('home')">
+    <span class="ni">📦</span>
+    <span>Boxen</span>
+  </button>
+  <button class="nav-btn" id="nav-photo" onclick="App.goToPhotoFromNav()">
+    <span class="ni">📷</span>
+    <span>Foto</span>
+  </button>
+  <button class="nav-btn" id="nav-settings" onclick="App.showView('settings')">
+    <span class="ni">⚙️</span>
+    <span>Einstellungen</span>
+  </button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════
+     MODAL: Label bearbeiten
+═══════════════════════════════════════════════════ -->
+<div id="modal-label" class="modal-bg hidden">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <h2>Box-Label bearbeiten</h2>
+    <div class="form-group">
+      <label>Label (z.B. Winterkleidung)</label>
+      <input type="text" id="label-input" placeholder="Beschreibung der Box …" onkeydown="if(event.key==='Enter')App.saveLabel()">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="App.saveLabel()">Speichern</button>
+      <button class="btn btn-secondary" onclick="App.closeModal('modal-label')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     MODAL: Einzel-QR
+═══════════════════════════════════════════════════ -->
+<div id="modal-qr" class="modal-bg hidden">
+  <div class="modal-sheet" style="text-align:center">
+    <div class="modal-handle"></div>
+    <h2 id="modal-qr-title">QR-Code BOX-001</h2>
+    <div id="modal-qr-canvas" style="display:flex;justify-content:center;margin:12px 0 8px"></div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px" id="modal-qr-url"></p>
+    <button class="btn btn-secondary" onclick="App.closeModal('modal-qr')">Schließen</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     TOAST
+═══════════════════════════════════════════════════ -->
+<div id="toast"></div>
+
+<!-- ═══════════════════════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════
+const CONFIG = {
+  owner:   'digitalyours',
+  repo:    'private-warehouse',
+  branch:  'main',
+  pageUrl: 'https://digitalyours.github.io/private-warehouse',
+  boxes:   Array.from({length: 10}, (_, i) => `BOX-${String(i+1).padStart(3,'0')}`),
+  pollInterval:    5000,
+  pollMaxAttempts: 40,   // 40 × 5s = 200s ≈ 3 min
+};
+
+// ═══════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+
+function b64Encode(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function b64Decode(str) {
+  try { return decodeURIComponent(escape(atob(str.replace(/\n/g,'')))); }
+  catch { return atob(str.replace(/\n/g,'')); }
+}
+function todayStr() {
+  return new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function todayISO() {
+  return new Date().toISOString().split('T')[0];
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+let _toastTimer;
+function toast(msg, type='', duration=3000) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type ? ' '+type : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.className = '', duration);
+}
+
+// ═══════════════════════════════════════════════════
+// GITHUB API
+// ═══════════════════════════════════════════════════
+function ghHeaders(write=false) {
+  const h = { 'Accept': 'application/vnd.github.v3+json' };
+  if (App.pat) h['Authorization'] = `token ${App.pat}`;
+  if (write)   h['Content-Type'] = 'application/json';
+  return h;
+}
+
+async function ghGet(path) {
+  const url = `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${path}`;
+  const r = await fetch(url, { headers: ghHeaders() });
+  if (r.status === 404) return null;
+  if (!r.ok) { const e = await r.json().catch(()=>{}); throw new Error(e?.message || `HTTP ${r.status}`); }
+  return r.json();
+}
+
+async function ghPut(path, base64content, sha, message) {
+  const url = `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${path}`;
+  const body = { message, content: base64content, branch: CONFIG.branch };
+  if (sha) body.sha = sha;
+  const r = await fetch(url, { method:'PUT', headers: ghHeaders(true), body: JSON.stringify(body) });
+  if (!r.ok) { const e = await r.json().catch(()=>{}); throw new Error(e?.message || `HTTP ${r.status}`); }
+  return r.json();
+}
+
+async function ghDelete(path, sha, message) {
+  const url = `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${path}`;
+  const r = await fetch(url, { method:'DELETE', headers: ghHeaders(true), body: JSON.stringify({ message, sha, branch: CONFIG.branch }) });
+  return r.ok;
+}
+
+async function triggerWorkflow(imagePath, boxId, requestId) {
+  const url = `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/actions/workflows/analyze-image.yml/dispatches`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: ghHeaders(true),
+    body: JSON.stringify({ ref: CONFIG.branch, inputs: { image_path: imagePath, box_id: boxId, request_id: requestId } })
+  });
+  if (!r.ok) { const e = await r.json().catch(()=>{}); throw new Error(e?.message || `HTTP ${r.status}`); }
+  return true;
+}
+
+// ═══════════════════════════════════════════════════
+// MARKDOWN PARSER / GENERATOR
+// ═══════════════════════════════════════════════════
+function parseBoxMd(md) {
+  const result = { label: '', items: [] };
+  const lines = md.split('\n');
+  let inContent = false;
+  for (const line of lines) {
+    const lblMatch = line.match(/^\*\*Label:\*\*\s*(.+)/);
+    if (lblMatch) { result.label = lblMatch[1].trim(); continue; }
+    if (line.startsWith('## Inhalt')) { inContent = true; continue; }
+    if (line.startsWith('## ') && inContent) { inContent = false; continue; }
+    if (inContent && line.startsWith('- ')) {
+      const m = line.match(/^- (.+?)(?:\s+\((\d{4}-\d{2}-\d{2})\))?$/);
+      if (m) result.items.push({ name: m[1].trim(), date: m[2] || todayISO() });
+    }
+  }
+  return result;
+}
+
+function buildBoxMd(boxId, label, items) {
+  let md = `# ${boxId}\n\n`;
+  if (label) md += `**Label:** ${label}\n\n`;
+  md += `## Inhalt\n\n`;
+  if (!items.length) {
+    md += `*Leer*\n`;
+  } else {
+    items.forEach(it => { md += `- ${it.name} (${it.date})\n`; });
+  }
+  md += `\n---\n*Zuletzt aktualisiert: ${todayStr()}*\n`;
+  return md;
+}
+
+// ═══════════════════════════════════════════════════
+// IMAGE PROCESSING
+// ═══════════════════════════════════════════════════
+function resizeImage(blob, maxPx=1024) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > maxPx || h > maxPx) {
+        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else       { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      c.toBlob(resolve, 'image/jpeg', 0.85);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function blobToBase64Raw(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = e => {
+      const b64 = e.target.result.split(',')[1];
+      resolve(b64);
+    };
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// APP
+// ═══════════════════════════════════════════════════
+const App = {
+  pat: '',
+  // boxes: { 'BOX-001': { items: [], label: '', sha: null, loaded: false } }
+  boxes: {},
+  currentBoxId: null,
+  currentView: 'home',
+  manualAddedItems: [],
+  _qrGenerated: false,
+
+  // ── init ──
+  init() {
+    this.pat = localStorage.getItem('wh_pat') || '';
+
+    // Init box state
+    CONFIG.boxes.forEach(id => {
+      this.boxes[id] = { items: [], label: '', sha: null, loaded: false };
+    });
+
+    // Fill photo box selector
+    const sel = $('photo-box-select');
+    CONFIG.boxes.forEach(id => {
+      const opt = document.createElement('option');
+      opt.value = id; opt.textContent = id;
+      sel.appendChild(opt);
+    });
+
+    // Settings: show saved PAT
+    if (this.pat) {
+      $('pat-input').value = this.pat;
+      this.updateConnStatus('ok', 'Verbunden');
+    }
+
+    // URL param: ?box=BOX-001
+    const params = new URLSearchParams(location.search);
+    const boxParam = params.get('box');
+
+    // Load boxes then navigate
+    this.renderBoxGrid();
+    this.loadAllBoxes().then(() => {
+      this.renderBoxGrid();
+      if (boxParam && CONFIG.boxes.includes(boxParam)) {
+        this.openBox(boxParam);
+      }
+    });
+  },
+
+  // ── views ──
+  showView(name) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    $(`view-${name}`)?.classList.add('active');
+    if (name === 'home')     { $('nav-home')?.classList.add('active'); }
+    if (name === 'photo')    { $('nav-photo')?.classList.add('active'); }
+    if (name === 'settings' || name === 'qrcodes') { $('nav-settings')?.classList.add('active'); }
+    if (name === 'manual')   { setTimeout(() => $('manual-input')?.focus(), 150); }
+    if (name === 'qrcodes')  { this.renderQRCodes(); }
+    this.currentView = name;
+    window.scrollTo(0, 0);
+  },
+
+  // ── load boxes ──
+  async loadAllBoxes() {
+    if (!this.pat) return; // need auth to reliably read
+    const promises = CONFIG.boxes.map(id => this.loadBox(id));
+    await Promise.allSettled(promises);
+  },
+
+  async loadBox(boxId) {
+    try {
+      const data = await ghGet(`boxes/${boxId}.md`);
+      if (!data) return;
+      const md = b64Decode(data.content);
+      const parsed = parseBoxMd(md);
+      this.boxes[boxId].items = parsed.items;
+      this.boxes[boxId].label = parsed.label;
+      this.boxes[boxId].sha   = data.sha;
+      this.boxes[boxId].loaded = true;
+    } catch(e) {
+      console.warn(`Konnte ${boxId} nicht laden:`, e);
+    }
+  },
+
+  // ── render home grid ──
+  renderBoxGrid(filter='') {
+    const grid = $('box-grid');
+    const fl = filter.toLowerCase().trim();
+    grid.innerHTML = '';
+
+    CONFIG.boxes.forEach(id => {
+      const box = this.boxes[id];
+      const label = box.label || '';
+      // Filter logic
+      if (fl) {
+        const inId    = id.toLowerCase().includes(fl);
+        const inLabel = label.toLowerCase().includes(fl);
+        const inItems = box.items.some(it => it.name.toLowerCase().includes(fl));
+        if (!inId && !inLabel && !inItems) return;
+      }
+
+      const card = document.createElement('div');
+      card.className = 'box-card' + (box.items.length > 0 ? ' filled' : '');
+      card.onclick = () => this.openBox(id);
+
+      const count = box.items.length;
+      card.innerHTML = `
+        <span class="box-emoji">📦</span>
+        <div class="box-id">${id}</div>
+        <div class="box-label">${label || '—'}</div>
+        <span class="box-count-badge ${count===0?'empty':''}">${count}</span>
+      `;
+      grid.appendChild(card);
+    });
+
+    if (grid.children.length === 0) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--text-muted);font-size:14px">Keine Boxen gefunden</div>`;
+    }
+  },
+
+  filterBoxes(val) {
+    this.renderBoxGrid(val);
+  },
+
+  // ── open box ──
+  async openBox(boxId) {
+    this.currentBoxId = boxId;
+    $('box-detail-title').textContent = boxId;
+    $('box-meta-id').textContent = boxId;
+    this.showView('box');
+    this.renderBoxDetail();
+
+    if (!this.boxes[boxId].loaded && this.pat) {
+      await this.loadBox(boxId);
+      this.renderBoxDetail();
+    }
+  },
+
+  renderBoxDetail() {
+    const boxId = this.currentBoxId;
+    const box   = this.boxes[boxId];
+    $('box-meta-lbl').textContent = box.label || 'Kein Label';
+    const count = box.items.length;
+    $('box-count-pill').textContent = `${count} ${count===1?'Artikel':'Artikel'}`;
+
+    const list = $('item-list');
+    list.innerHTML = '';
+
+    if (!box.items.length) {
+      list.innerHTML = `<div class="empty-items">📭 Diese Box ist noch leer.<br>Füge Artikel per Foto oder manuell hinzu.</div>`;
+      return;
+    }
+
+    box.items.forEach((item, idx) => {
+      const li = document.createElement('li');
+      li.className = 'item-row';
+      li.innerHTML = `
+        <div class="item-dot"></div>
+        <span class="item-name">${this._esc(item.name)}</span>
+        <span class="item-date">${item.date}</span>
+        <button class="item-del" onclick="App.deleteItem('${boxId}', ${idx})" title="Löschen">🗑</button>
+      `;
+      list.appendChild(li);
+    });
+  },
+
+  _esc(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  },
+
+  // ── delete item ──
+  async deleteItem(boxId, idx) {
+    if (!this.pat) { toast('⚠️ Bitte zuerst PAT einrichten', 'error'); this.showView('settings'); return; }
+    const box = this.boxes[boxId];
+    const name = box.items[idx]?.name;
+    box.items.splice(idx, 1);
+    this.renderBoxDetail();
+    this.renderBoxGrid();
+    try {
+      const md = buildBoxMd(boxId, box.label, box.items);
+      const res = await ghPut(`boxes/${boxId}.md`, b64Encode(md), box.sha, `🗑 ${boxId}: "${name}" entfernt`);
+      box.sha = res.content?.sha;
+      toast(`🗑 "${name}" entfernt`, 'success');
+    } catch(e) {
+      toast('❌ Fehler beim Speichern: '+e.message, 'error');
+    }
+  },
+
+  // ── label ──
+  showLabelEdit() {
+    $('label-input').value = this.boxes[this.currentBoxId]?.label || '';
+    this.openModal('modal-label');
+    setTimeout(() => $('label-input').focus(), 200);
+  },
+  async saveLabel() {
+    if (!this.pat) { toast('⚠️ Bitte zuerst PAT einrichten', 'error'); return; }
+    const boxId = this.currentBoxId;
+    const label = $('label-input').value.trim();
+    this.boxes[boxId].label = label;
+    this.closeModal('modal-label');
+    this.renderBoxDetail();
+    this.renderBoxGrid();
+    try {
+      const md = buildBoxMd(boxId, label, this.boxes[boxId].items);
+      const res = await ghPut(`boxes/${boxId}.md`, b64Encode(md), this.boxes[boxId].sha, `✏️ ${boxId}: Label aktualisiert`);
+      this.boxes[boxId].sha = res.content?.sha;
+      toast('✓ Label gespeichert', 'success');
+    } catch(e) {
+      toast('❌ '+e.message, 'error');
+    }
+  },
+
+  // ── modal ──
+  openModal(id) { $(id).classList.remove('hidden'); },
+  closeModal(id) { $(id).classList.add('hidden'); },
+
+  // ── photo flow ──
+  goToPhoto() {
+    this.resetPhoto();
+    $('photo-select-box').style.display = 'none';
+    $('photo-selected-info').style.display = 'block';
+    $('photo-box-label').textContent = this.currentBoxId;
+    this.showView('photo');
+  },
+  goToPhotoFromNav() {
+    this.resetPhoto();
+    if (this.currentBoxId) {
+      $('photo-select-box').style.display = 'none';
+      $('photo-selected-info').style.display = 'block';
+      $('photo-box-label').textContent = this.currentBoxId;
+    } else {
+      $('photo-select-box').style.display = 'block';
+      $('photo-selected-info').style.display = 'none';
+    }
+    this.showView('photo');
+  },
+  setPhotoBox(boxId) {
+    if (!boxId) return;
+    this.currentBoxId = boxId;
+    $('photo-select-box').style.display = 'none';
+    $('photo-selected-info').style.display = 'block';
+    $('photo-box-label').textContent = boxId;
+  },
+  backFromPhoto() {
+    if (this.currentBoxId) this.showView('box');
+    else this.showView('home');
+  },
+  resetPhoto() {
+    $('drop-zone').style.display = 'block';
+    $('preview-wrap').style.display = 'none';
+    $('photo-loading').style.display = 'none';
+    $('ai-results').style.display = 'none';
+    $('photo-error').style.display = 'none';
+    $('preview-img').src = '';
+    $('file-input').value = '';
+    $('ai-items-list').innerHTML = '';
+    $('ai-add-input').value = '';
+    this._photoBlob = null;
+    this._aiItems = [];
+  },
+
+  onDragOver(e) { e.preventDefault(); $('drop-zone').classList.add('dragover'); },
+  onDragLeave(e) { $('drop-zone').classList.remove('dragover'); },
+  onDrop(e) {
+    e.preventDefault();
+    $('drop-zone').classList.remove('dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith('image/')) this._processImageFile(file);
+  },
+
+  onFileSelected(event) {
+    const file = event.target.files?.[0];
+    if (file) this._processImageFile(file);
+  },
+
+  async _processImageFile(file) {
+    if (!this.currentBoxId) {
+      toast('⚠️ Bitte zuerst eine Box auswählen', 'error');
+      $('photo-select-box').style.display = 'block';
+      return;
+    }
+    if (!this.pat) {
+      toast('⚠️ Bitte zuerst PAT einrichten', 'error');
+      this.showView('settings');
+      return;
+    }
+
+    // Show preview
+    const objectUrl = URL.createObjectURL(file);
+    $('preview-img').src = objectUrl;
+    $('preview-wrap').style.display = 'block';
+    $('drop-zone').style.display = 'none';
+
+    this._photoBlob = file;
+
+    // Start analysis after short delay (let preview render)
+    setTimeout(() => this._analyzePhoto(), 300);
+  },
+
+  async _analyzePhoto() {
+    const boxId = this.currentBoxId;
+    $('photo-loading').style.display = 'block';
+    $('ai-results').style.display = 'none';
+    $('photo-error').style.display = 'none';
+
+    const setStep = txt => { $('loading-step').textContent = txt; };
+
+    try {
+      // 1. Resize
+      setStep('Bild wird verkleinert …');
+      const resized = await resizeImage(this._photoBlob, 1024);
+
+      // 2. Base64
+      const base64 = await blobToBase64Raw(resized);
+
+      // 3. Upload to GitHub
+      setStep('Bild wird zu GitHub hochgeladen …');
+      const requestId = `${boxId}-${Date.now()}`;
+      const imagePath = `incoming/${requestId}.jpg`;
+      await ghPut(imagePath, base64, null, `📸 Foto für ${boxId}`);
+
+      // 4. Trigger workflow
+      setStep('KI-Analyse wird gestartet …');
+      await triggerWorkflow(imagePath, boxId, requestId);
+
+      // 5. Poll
+      setStep('Warte auf KI-Ergebnis (kann 30–60s dauern) …');
+      const result = await this._pollResult(requestId);
+
+      // 6. Show results
+      $('photo-loading').style.display = 'none';
+      this._aiItems = result.items.map(name => ({ name, checked: true }));
+      this._renderAiItems();
+      $('ai-results').style.display = 'block';
+
+    } catch(e) {
+      $('photo-loading').style.display = 'none';
+      $('photo-error').style.display = 'block';
+      $('photo-error-msg').textContent = `❌ Fehler: ${e.message}`;
+      console.error(e);
+    }
+  },
+
+  async _pollResult(requestId) {
+    for (let i = 0; i < CONFIG.pollMaxAttempts; i++) {
+      await sleep(CONFIG.pollInterval);
+      const data = await ghGet(`results/${requestId}.json`).catch(() => null);
+      if (data) {
+        const content = b64Decode(data.content);
+        const result = JSON.parse(content);
+        // Delete result file (fire & forget)
+        ghDelete(`results/${requestId}.json`, data.sha, `🧹 Ergebnis gelöscht`).catch(()=>{});
+        return result;
+      }
+    }
+    throw new Error('Zeitüberschreitung: KI hat nicht rechtzeitig geantwortet (max. 3 Min.)');
+  },
+
+  _renderAiItems() {
+    const container = $('ai-items-list');
+    container.innerHTML = '';
+    this._aiItems.forEach((item, idx) => {
+      const div = document.createElement('div');
+      div.className = 'ai-item-row';
+      div.innerHTML = `
+        <input type="checkbox" id="ai-cb-${idx}" ${item.checked?'checked':''} onchange="App._toggleAiItem(${idx},this.checked)">
+        <label class="ai-item-name${item.checked?'':' checked'}" for="ai-cb-${idx}">${this._esc(item.name)}</label>
+      `;
+      container.appendChild(div);
+    });
+  },
+
+  _toggleAiItem(idx, checked) {
+    this._aiItems[idx].checked = checked;
+    const lbl = document.querySelector(`label[for="ai-cb-${idx}"]`);
+    if (lbl) lbl.className = 'ai-item-name' + (checked ? '' : ' checked');
+  },
+
+  addToAiList() {
+    const inp = $('ai-add-input');
+    const name = inp.value.trim();
+    if (!name) return;
+    this._aiItems.push({ name, checked: true });
+    this._renderAiItems();
+    inp.value = '';
+    inp.focus();
+  },
+
+  async confirmAiItems() {
+    const selected = this._aiItems.filter(i => i.checked).map(i => i.name);
+    if (!selected.length) { toast('Keine Artikel ausgewählt', 'error'); return; }
+
+    try {
+      await this._addItemsToBox(this.currentBoxId, selected);
+      toast(`✓ ${selected.length} Artikel zu ${this.currentBoxId} hinzugefügt`, 'success', 4000);
+      this.showView('box');
+      this.renderBoxDetail();
+      this.renderBoxGrid();
+    } catch(e) {
+      toast('❌ Fehler: ' + e.message, 'error');
+    }
+  },
+
+  // ── manual add ──
+  async addManualItem() {
+    if (!this.pat) { toast('⚠️ Bitte zuerst PAT einrichten', 'error'); return; }
+    const input = $('manual-input');
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+
+    input.value = '';
+    input.focus();
+
+    try {
+      await this._addItemsToBox(this.currentBoxId, [name]);
+      this.manualAddedItems.unshift(name);
+      this._renderManualAdded();
+      toast(`✓ "${name}" hinzugefügt`, 'success');
+    } catch(e) {
+      toast('❌ Fehler: ' + e.message, 'error');
+    }
+  },
+
+  _renderManualAdded() {
+    if (!this.manualAddedItems.length) return;
+    $('manual-added').style.display = 'block';
+    const list = $('manual-added-list');
+    list.innerHTML = '';
+    this.manualAddedItems.slice(0,8).forEach(name => {
+      const li = document.createElement('li');
+      li.className = 'item-row';
+      li.innerHTML = `<div class="item-dot"></div><span class="item-name">${this._esc(name)}</span>`;
+      list.appendChild(li);
+    });
+  },
+
+  // ── add items core ──
+  async _addItemsToBox(boxId, newNames) {
+    const box = this.boxes[boxId];
+    // Reload fresh SHA to avoid conflicts
+    const data = await ghGet(`boxes/${boxId}.md`).catch(() => null);
+    let currentMd = '';
+    if (data) {
+      currentMd = b64Decode(data.content);
+      box.sha = data.sha;
+    }
+
+    const parsed = parseBoxMd(currentMd);
+    const existing = new Set(parsed.items.map(i => i.name.toLowerCase()));
+    const date = todayISO();
+    newNames.forEach(name => {
+      if (!existing.has(name.toLowerCase())) {
+        parsed.items.push({ name, date });
+        existing.add(name.toLowerCase());
+      }
+    });
+
+    const newMd = buildBoxMd(boxId, parsed.label || box.label, parsed.items);
+    const res = await ghPut(`boxes/${boxId}.md`, b64Encode(newMd), box.sha, `📦 ${boxId}: ${newNames.join(', ')}`);
+
+    box.items = parsed.items;
+    box.label = parsed.label || box.label;
+    box.sha   = res.content?.sha;
+    box.loaded = true;
+  },
+
+  // ── QR codes ──
+  showBoxQR() {
+    const boxId = this.currentBoxId;
+    const url   = `${CONFIG.pageUrl}/?box=${boxId}`;
+    $('modal-qr-title').textContent = `QR-Code ${boxId}`;
+    $('modal-qr-url').textContent   = url;
+    const canvas = $('modal-qr-canvas');
+    canvas.innerHTML = '';
+    new QRCode(canvas, { text: url, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.H });
+    this.openModal('modal-qr');
+  },
+
+  renderQRCodes() {
+    if (this._qrGenerated) return;
+    const grid = $('qr-grid');
+    grid.innerHTML = '';
+    CONFIG.boxes.forEach(id => {
+      const url = `${CONFIG.pageUrl}/?box=${id}`;
+      const card = document.createElement('div');
+      card.className = 'qr-card';
+      const canvasWrap = document.createElement('div');
+      canvasWrap.className = 'qr-box';
+      card.appendChild(canvasWrap);
+      card.innerHTML += `<div class="qr-id">${id}</div><div class="qr-lbl">${this.boxes[id]?.label || ''}</div>`;
+      grid.appendChild(card);
+      new QRCode(canvasWrap, { text: url, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.H });
+    });
+    this._qrGenerated = true;
+  },
+
+  // ── settings ──
+  async savePat() {
+    const pat = $('pat-input').value.trim();
+    if (!pat) { toast('⚠️ Bitte PAT eingeben', 'error'); return; }
+
+    this.updateConnStatus('wait', 'Verbindung wird geprüft …');
+
+    try {
+      // Test: get repo info
+      const r = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}`, {
+        headers: { 'Authorization': `token ${pat}`, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status} – PAT ungültig oder Repo nicht gefunden`);
+      this.pat = pat;
+      localStorage.setItem('wh_pat', pat);
+      this.updateConnStatus('ok', 'Verbunden ✓');
+      toast('✓ Verbunden!', 'success');
+      // Reload boxes with new PAT
+      await this.loadAllBoxes();
+      this.renderBoxGrid();
+    } catch(e) {
+      this.updateConnStatus('err', 'Fehler: ' + e.message);
+      toast('❌ ' + e.message, 'error', 5000);
+    }
+  },
+
+  updateConnStatus(state, text) {
+    const dot = $('conn-dot');
+    const txt = $('conn-text');
+    dot.className = 'dot ' + state;
+    txt.textContent = text;
+  },
+};
+
+// ── Start ──
+document.addEventListener('DOMContentLoaded', () => App.init());
+
+// Close modals on background click
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('click', e => { if (e.target === bg) bg.classList.add('hidden'); });
+});
+</script>
+</body>
+</html>
